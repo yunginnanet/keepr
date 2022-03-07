@@ -1,4 +1,4 @@
-package main
+package collect
 
 import (
 	"errors"
@@ -6,11 +6,28 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/go-audio/wav"
+	"github.com/rs/zerolog"
+
+	"git.tcp.direct/kayos/keepr/internal/config"
+	"git.tcp.direct/kayos/keepr/internal/util"
 )
+
+var log *zerolog.Logger
+
+func init() {
+	go func() {
+		for log == nil {
+			log = config.GetLogger()
+		}
+	}()
+}
 
 // SampleType represents the type of sample we think it is.
 type SampleType uint8
 
+//goland:noinspection GoUnusedConst
 const (
 	Unknown SampleType = iota
 	Percussion
@@ -28,10 +45,12 @@ const (
 type Sample struct {
 	Name     string
 	Path     string
-	Modified time.Time
+	ModTime  time.Time
+	Duration time.Duration
 	Key      string
 	Tempo    int
 	Type     []SampleType
+	Metadata *wav.Metadata
 }
 
 // TODO: make a "Collector" interface
@@ -69,9 +88,9 @@ func (c *Collection) TempoStats() {
 	}
 }
 
-func (c *Collection) TempoSymlinks() (err error) {
-	log.Trace().Msg("TempoSymlinks start")
-	defer log.Trace().Err(err).Msg("TempoSymlinks finish")
+func (c *Collection) SymlinkTempos() (err error) {
+	log.Trace().Msg("SymlinkTempos start")
+	defer log.Trace().Err(err).Msg("SymlinkTempos finish")
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -79,7 +98,7 @@ func (c *Collection) TempoSymlinks() (err error) {
 		return errors.New("no tempos recorded")
 	}
 
-	dst := apath(destination + "Tempo")
+	dst := util.APath(config.Destination+"Tempo", config.Relative)
 	err = os.MkdirAll(dst, os.ModePerm)
 	if err != nil && !os.IsNotExist(err) {
 		return

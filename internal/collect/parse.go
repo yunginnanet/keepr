@@ -1,4 +1,4 @@
-package main
+package collect
 
 import (
 	"fmt"
@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/go-audio/wav"
 )
 
 func freshLink(path string) error {
@@ -40,40 +42,66 @@ func checkbpm(piece string) (bpm int, ok bool) {
 	return 0, false
 }
 
-func process(entry fs.DirEntry, dir string) *Sample {
-	finfo, err := entry.Info()
-	if err != nil {
-		log.Warn().Err(err).Msg(entry.Name())
-	}
-
-	s := &Sample{
-		Name:     entry.Name(),
-		Path:     fmt.Sprintf("%s%s", basepath, dir),
-		Modified: finfo.ModTime(),
-	}
-	name := strings.ToLower(entry.Name())
-
+func guessBPM(name string) int {
+	name = strings.ToLower(name)
 	var (
 		spl  []string
 		sep  = " "
 		seps = []string{"_", "-", " - "}
 	)
-
 	for _, s := range seps {
 		if strings.Contains(name, s) {
 			sep = s
 		}
 	}
-
 	spl = strings.Split(name, sep)
 	for _, piece := range spl {
 		switch {
 		case strings.Contains(piece, "bpm"):
 			bpm, ok := checkbpm(piece)
 			if ok {
-				s.Tempo = bpm
+				return bpm
 			}
 		}
 	}
-	return s
+	return 0
+}
+
+func readWAV(s *Sample) error {
+	f, err := os.Open(s.Path)
+	if err != nil {
+		return fmt.Errorf("couldn't open %s: %s", s.Path, err.Error())
+	}
+	defer f.Close()
+
+	decoder := wav.NewDecoder(f)
+	s.Duration, err = decoder.Duration()
+	if err != nil {
+		return fmt.Errorf("failed to get duration for %s: %s", s.Name, err.Error())
+	}
+	decoder.ReadMetadata()
+	if decoder.Err() != nil {
+		return decoder.Err()
+	}
+	s.Metadata = decoder.Metadata
+
+	return nil
+}
+
+func Process(entry fs.DirEntry, dir string) (s *Sample, err error) {
+	var finfo os.FileInfo
+	finfo, err = entry.Info()
+	if err != nil {
+		return nil, fmt.Errorf("failed to Process %s: %s", entry.Name(), err.Error())
+	}
+
+	s = &Sample{
+		Name:    entry.Name(),
+		Path:    dir,
+		ModTime: finfo.ModTime(),
+	}
+	err = readWAV(s)
+	s.Tempo = guessBPM(s.Name)
+
+	return
 }
