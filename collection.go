@@ -5,7 +5,36 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 )
+
+// SampleType represents the type of sample we think it is.
+type SampleType uint8
+
+const (
+	Unknown SampleType = iota
+	Percussion
+	Ambient
+	Melodic
+	DrumLoop
+	Loop
+	Kick
+	Snare
+	HatClosed
+	HatOpen
+)
+
+// Sample represents an audio sample and contains relevant information regarding said sample.
+type Sample struct {
+	Name     string
+	Path     string
+	Modified time.Time
+	Key      string
+	Tempo    int
+	Type     []SampleType
+}
+
+// TODO: make a "Collector" interface
 
 // Collection contains taxonomy information and relationship mapping for our Sample collectiion.
 type Collection struct {
@@ -13,6 +42,7 @@ type Collection struct {
 	mu     *sync.RWMutex
 }
 
+// Library is a global default instance of a Collection.
 var Library = &Collection{
 	Tempos: make(map[int][]*Sample),
 	mu:     &sync.RWMutex{},
@@ -50,31 +80,31 @@ func (c *Collection) TempoSymlinks() (err error) {
 	}
 
 	dst := apath(destination + "Tempo")
-	_, err = os.Stat(dst)
-
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return
-	}
-
 	err = os.MkdirAll(dst, os.ModePerm)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return
 	}
 
 	for t, ss := range c.Tempos {
 		tempopath := dst + "/" + strconv.Itoa(t) + "/"
-
-		if err != nil {
-
-		}
-		_, err = os.Stat(tempopath)
-		if !errors.Is(err, os.ErrNotExist) {
-			return err
-		} else {
-			// os.MkdirAll(tempopath+strconv.Itoa(t), os.ModePerm)
+		err = os.MkdirAll(tempopath, os.ModePerm)
+		if err != nil && !os.IsNotExist(err) {
+			return
 		}
 		for _, sample := range ss {
-			log.Debug().Str("caller", sample.FullPath()).Msg("to exist in " + tempopath)
+			finalPath := tempopath + sample.Name
+			log.Trace().Str("caller", sample.Path).Msg(finalPath)
+			err = freshLink(finalPath)
+			if err != nil {
+				return
+			}
+			if _, err = os.Stat(sample.Path); err != nil {
+				return
+			}
+			err = os.Symlink(sample.Path, finalPath)
+			if err != nil && !os.IsNotExist(err) {
+				return
+			}
 		}
 	}
 	return nil

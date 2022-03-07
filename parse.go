@@ -1,10 +1,21 @@
 package main
 
 import (
+	"fmt"
 	"io/fs"
+	"os"
 	"strconv"
 	"strings"
 )
+
+func freshLink(path string) error {
+	if _, err := os.Lstat(path); err == nil {
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("failed to unlink: %+v", err)
+		}
+	}
+	return nil
+}
 
 func checkbpm(piece string) (bpm int, ok bool) {
 	frg := strings.Split(piece, "bpm")[0]
@@ -34,17 +45,18 @@ func process(entry fs.DirEntry, dir string) *Sample {
 	if err != nil {
 		log.Warn().Err(err).Msg(entry.Name())
 	}
+
 	s := &Sample{
-		Name:      entry.Name(),
-		Directory: dir,
-		Modified:  finfo.ModTime(),
+		Name:     entry.Name(),
+		Path:     fmt.Sprintf("%s%s", basepath, dir),
+		Modified: finfo.ModTime(),
 	}
 	name := strings.ToLower(entry.Name())
 
 	var (
 		spl  []string
-		sep  string = " "
-		seps        = []string{"_", "-", " - "}
+		sep  = " "
+		seps = []string{"_", "-", " - "}
 	)
 
 	for _, s := range seps {

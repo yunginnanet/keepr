@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"os"
 	"runtime"
 	"strings"
@@ -15,7 +14,7 @@ const defDestination = "001-LINKED_SORTED_DIRECTORIES"
 var (
 	log         zerolog.Logger
 	target      = ""
-	destination = "./" + defDestination
+	destination = "../" + defDestination
 	basepath    = "/"
 	relative    = false
 )
@@ -67,7 +66,7 @@ func init() {
 	f, err := os.Stat(destination)
 	switch {
 	case err != nil:
-		if !errors.Is(err, os.ErrNotExist) {
+		if !os.IsNotExist(err) {
 			log.Fatal().Caller().Str("caller", destination).Err(err).Msg("")
 		}
 		if err := os.MkdirAll(destination, os.ModePerm); err != nil {
