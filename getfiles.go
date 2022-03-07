@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -34,6 +35,21 @@ type Sample struct {
 	Type      []SampleType
 }
 
+func (s *Sample) FullPath() string {
+	return basepath + s.Directory + "/" + s.Name
+}
+
+func apath(path string) string {
+	if relative {
+		return path
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		log.Fatal().Err(err).Msg("unable to get absolute path")
+	}
+	return abs
+}
+
 func main() {
 	var lastpath = ""
 	cripwalk := walk.New(os.DirFS("/"), target)
@@ -57,9 +73,13 @@ func main() {
 			slog.Debug().Msg("skiping samplesimp directory entirely")
 			cripwalk.SkipParent()
 		default:
-			sample := process(cripwalk.Entry(), cripwalk.Path())
+			sample := process(cripwalk.Entry(), apath(cripwalk.Path()))
 			Library.IngestTempo(sample)
 		}
 	}
 	Library.TempoStats()
+	err := Library.TempoSymlinks()
+	if err != nil {
+		log.Fatal().Err(err).Msg("")
+	}
 }

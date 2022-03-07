@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -15,6 +16,8 @@ var (
 	log         zerolog.Logger
 	target      = ""
 	destination = "./" + defDestination
+	basepath    = "/"
+	relative    = false
 )
 
 func required(i int) {
@@ -26,6 +29,9 @@ func required(i int) {
 }
 
 func init() {
+	if runtime.GOOS == "windows" {
+		basepath = "C:/"
+	}
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	for i, arg := range os.Args {
 		if i == 0 {
@@ -42,6 +48,8 @@ func init() {
 			zerolog.SetGlobalLevel(zerolog.DebugLevel)
 		case "--trace", "-vv":
 			zerolog.SetGlobalLevel(zerolog.TraceLevel)
+		case "--relative", "-r":
+			relative = true
 		default:
 			target = strings.Trim(arg, "/")
 			println("search target detected: " + target)
@@ -72,5 +80,8 @@ func init() {
 		if err := os.MkdirAll(destination, os.ModePerm); err != nil {
 			log.Fatal().Caller().Str("caller", destination).Err(err).Msg("could not make directory")
 		}
+	}
+	if !strings.HasSuffix(destination, "/") {
+		destination = destination + "/"
 	}
 }

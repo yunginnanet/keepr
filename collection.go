@@ -1,7 +1,9 @@
 package main
 
 import (
-	"fmt"
+	"errors"
+	"os"
+	"strconv"
 	"sync"
 )
 
@@ -32,7 +34,48 @@ func (c *Collection) TempoStats() {
 	defer c.mu.RUnlock()
 	for t, ss := range c.Tempos {
 		if len(ss) > 1 {
-			fmt.Printf("%dBPM: %d\n", t, len(ss))
+			log.Printf("%dBPM: %d", t, len(ss))
 		}
 	}
+}
+
+func (c *Collection) TempoSymlinks() (err error) {
+	log.Trace().Msg("TempoSymlinks start")
+	defer log.Trace().Err(err).Msg("TempoSymlinks finish")
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if len(c.Tempos) < 1 {
+		return errors.New("no tempos recorded")
+	}
+
+	dst := apath(destination + "Tempo")
+	_, err = os.Stat(dst)
+
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return
+	}
+
+	err = os.MkdirAll(dst, os.ModePerm)
+	if err != nil {
+		return
+	}
+
+	for t, ss := range c.Tempos {
+		tempopath := dst + "/" + strconv.Itoa(t) + "/"
+
+		if err != nil {
+
+		}
+		_, err = os.Stat(tempopath)
+		if !errors.Is(err, os.ErrNotExist) {
+			return err
+		} else {
+			// os.MkdirAll(tempopath+strconv.Itoa(t), os.ModePerm)
+		}
+		for _, sample := range ss {
+			log.Debug().Str("caller", sample.FullPath()).Msg("to exist in " + tempopath)
+		}
+	}
+	return nil
 }
