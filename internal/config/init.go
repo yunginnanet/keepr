@@ -17,6 +17,8 @@ var (
 	Destination = defDestination
 	// Relative will determine if we use relative pathing for symlinks.
 	Relative = false
+
+	StatsOnly = false
 )
 
 // GetLogger retrieves a pointer to our zerolog instance.
@@ -51,6 +53,8 @@ func init() {
 			zerolog.SetGlobalLevel(zerolog.TraceLevel)
 		case "--relative", "-r":
 			Relative = true
+		case "--stats", "-s":
+			StatsOnly = true
 		default:
 			Target = strings.Trim(arg, "/")
 			println("search target detected: " + Target)

@@ -13,8 +13,10 @@ import (
 	"git.tcp.direct/kayos/keepr/internal/util"
 )
 
-var log *zerolog.Logger
-var basepath = "/"
+var (
+	log      *zerolog.Logger
+	basepath = "/"
+)
 
 func init() {
 	if runtime.GOOS == "windows" {
@@ -44,12 +46,17 @@ func main() {
 			}
 			slog.Trace().Msg("directory")
 		case cripwalk.Path() == os.Args[1]:
-			slog.Debug().Msg("skiping samplesimp directory entirely")
+			slog.Debug().Msg("skipping self-parent directory entirely")
 			cripwalk.SkipParent()
 		default:
 			sample, err := collect.Process(cripwalk.Entry(), util.APath(cripwalk.Path(), config.Relative))
 			if err != nil {
 				log.Warn().Err(err).Msgf("failed to process %s", cripwalk.Entry().Name())
+				continue
+			}
+			if sample == nil {
+				log.Trace().Msgf("skipping unknown file %s", cripwalk.Entry().Name())
+				continue
 			}
 			collect.Library.IngestTempo(sample)
 		}
@@ -57,6 +64,10 @@ func main() {
 
 	if zerolog.GlobalLevel() == zerolog.TraceLevel {
 		collect.Library.TempoStats()
+	}
+
+	if config.StatsOnly {
+		return
 	}
 
 	err := collect.Library.SymlinkTempos()

@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/go-audio/wav"
+	"gopkg.in/music-theory.v0/key"
+	"gopkg.in/music-theory.v0/note"
 )
 
 func freshLink(path string) error {
@@ -19,7 +21,7 @@ func freshLink(path string) error {
 	return nil
 }
 
-func checkbpm(piece string) (bpm int, ok bool) {
+func checkbpm(piece string) (bpm int) {
 	frg := strings.Split(piece, "bpm")[0]
 	m := strings.Split(frg, "")
 	var start = 0
@@ -33,38 +35,86 @@ func checkbpm(piece string) (bpm int, ok bool) {
 		break
 	}
 	if !numfound {
-		return 0, false
+		return 0
 	}
 	var fail error
 	if bpm, fail = strconv.Atoi(frg[start:]); fail == nil {
-		return bpm, true
+		return bpm
 	}
-	return 0, false
+	return 0
 }
 
-func guessBPM(name string) int {
-	name = strings.ToLower(name)
+func guessSeperator(name string) (spl []string) {
 	var (
-		spl  []string
 		sep  = " "
-		seps = []string{"_", "-", " - "}
+		seps = []string{"-", "_", " - "}
 	)
 	for _, s := range seps {
 		if strings.Contains(name, s) {
 			sep = s
 		}
 	}
-	spl = strings.Split(name, sep)
-	for _, piece := range spl {
-		switch {
-		case strings.Contains(piece, "bpm"):
-			bpm, ok := checkbpm(piece)
-			if ok {
-				return bpm
-			}
+	return strings.Split(name, sep)
+}
+
+func (s *Sample) getParentDir() string {
+	spl := strings.Split(s.Path, "/")
+	return strings.ToLower(spl[len(spl)-2])
+}
+
+func (s *Sample) IsType(st SampleType) bool {
+	for _, t := range s.Type {
+		if t == st {
+			return true
 		}
 	}
-	return 0
+	return false
+}
+
+var drumDirMap = map[string]DrumType{
+	"snares": Snare, "kicks": Kick, "hats": HiHat, "hihats": HiHat, "closed_hihats": HatClosed,
+	"open_hihats": HatOpen, "808s": EightOhEight, "808": EightOhEight, "toms": Tom,
+}
+
+func (s *Sample) ParseFilename() {
+	for _, piece := range guessSeperator(s.Name) {
+		piece = strings.ToLower(piece)
+		if strings.Contains(piece, "bpm") {
+			s.Tempo = checkbpm(piece)
+			if s.Tempo != 0 {
+				s.Type = append(s.Type, Loop)
+			}
+		}
+
+		drumtype, isdrum := drumDirMap[s.getParentDir()]
+
+		switch {
+		case s.getParentDir() == "melodic_loops":
+			if !s.IsType(Loop) {
+				s.Type = append(s.Type, Loop)
+				go Library.IngestMelodicLoop(s)
+			}
+			if isdrum {
+				go Library.IngestDrum(s, drumtype)
+			}
+		}
+
+		spl := strings.Split(piece, "")
+
+		// if our fragment starts with a known root note, then try to parse the fragment, else dip-set.
+		switch spl[0] {
+		case "C", "D", "E", "F", "G", "A", "B":
+			break
+		default:
+			continue
+		}
+
+		k := key.Of(piece)
+		if k.Root != note.Nil {
+			s.Key = k
+			Library.IngestKey(s)
+		}
+	}
 }
 
 func readWAV(s *Sample) error {
@@ -84,6 +134,9 @@ func readWAV(s *Sample) error {
 		return decoder.Err()
 	}
 	s.Metadata = decoder.Metadata
+	log.Trace().Msg(fmt.Sprintf("metadata: %v", s.Metadata))
+
+	decoder.ReadInfo()
 
 	return nil
 }
@@ -95,13 +148,27 @@ func Process(entry fs.DirEntry, dir string) (s *Sample, err error) {
 		return nil, fmt.Errorf("failed to Process %s: %s", entry.Name(), err.Error())
 	}
 
+	spl := strings.Split(entry.Name(), ".")
+	ext := spl[len(spl)-1]
+
 	s = &Sample{
 		Name:    entry.Name(),
 		Path:    dir,
 		ModTime: finfo.ModTime(),
 	}
-	err = readWAV(s)
-	s.Tempo = guessBPM(s.Name)
+
+	switch ext {
+	case "midi", "mid":
+		s.Type = append(s.Type, MIDI)
+	case "wav":
+		err = readWAV(s)
+		if err != nil {
+			return nil, err
+		}
+		s.ParseFilename()
+	default:
+		return nil, nil
+	}
 
 	return
 }
