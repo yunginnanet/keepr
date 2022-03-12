@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -87,6 +88,16 @@ var drumToDirMap = map[DrumType]string{
 	HatOpen: "HiHat/Open", EightOhEight: "808", Tom: "Toms", Percussion: "Other",
 }
 
+var (
+	rgxSharpIn, _    = regexp.Compile("[♯#]|major")
+	rgxFlatIn, _     = regexp.Compile("^F|[♭b]")
+	rgxSharpBegin, _ = regexp.Compile("^[♯#]")
+	rgxFlatBegin, _  = regexp.Compile("^[♭b]")
+	rgxSharpishIn, _ = regexp.Compile("(M|maj|major|aug)")
+	rgxFlattishIn, _ = regexp.Compile("([^a-z]|^)(m|min|minor|dim)")
+	mustMatchOne     = []*regexp.Regexp{rgxFlatIn, rgxFlatBegin, rgxSharpBegin, rgxSharpIn, rgxFlattishIn, rgxSharpishIn}
+)
+
 func (s *Sample) ParseFilename() {
 	atomic.AddInt32(&Backlog, 1)
 	defer atomic.AddInt32(&Backlog, -1)
@@ -118,13 +129,25 @@ func (s *Sample) ParseFilename() {
 		}
 
 		spl := strings.Split(opiece, "")
-		if len(spl) < 1 {
+		if len(spl) < 1 || len(spl) > 5 {
 			continue
 		}
 		// if our fragment starts with a known root note, then try to parse the fragment, else dip-set.
 		switch spl[0] {
 		case "C", "D", "E", "F", "G", "A", "B":
-			break
+			if len(spl) < 2 {
+				break
+			}
+			var found = false
+			for _, rgx := range mustMatchOne {
+				if rgx.MatchString(opiece) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
 		default:
 			continue
 		}
