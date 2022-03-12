@@ -97,22 +97,62 @@ func (c *Collection) TempoStats() {
 	}
 }
 
+// DrumStats outputs the amount of samples of each known drum type.
+func (c *Collection) DrumStats() {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for t, ss := range c.Drums {
+		if len(ss) > 1 {
+			log.Printf("%s: %d", drumToDirMap[t], len(ss))
+		}
+	}
+}
+
+// KeyStats outputs the amount of samples with each known key.
+func (c *Collection) KeyStats() {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for t, ss := range c.Keys {
+		if len(ss) > 1 {
+			log.Printf("%s: %d", t.Root.String(t.AdjSymbol), len(ss))
+		}
+	}
+}
+
+func link(sample *Sample, kp string) {
+	slog := log.With().Str("caller", sample.Path).Logger()
+	finalPath := kp + sample.Name
+	slog.Trace().Msg(finalPath)
+	err := freshLink(finalPath)
+	if err != nil {
+		slog.Warn().Err(err).Msg("old symlink delete failure")
+	}
+	if _, err = os.Stat(sample.Path); err != nil {
+		slog.Warn().Err(err).Msg("can't stat original file")
+	}
+	if config.Simulate {
+		log.Printf("would have linked %s -> %s", sample.Path, finalPath)
+		return
+	}
+	err = os.Symlink(sample.Path, finalPath)
+	if err != nil && !os.IsNotExist(err) {
+		slog.Error().Err(err).Msg("failed to create symlink")
+	}
+}
+
 func (c *Collection) SymlinkTempos() (err error) {
 	log.Trace().Msg("SymlinkTempos start")
 	defer log.Trace().Err(err).Msg("SymlinkTempos finish")
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-
 	if len(c.Tempos) < 1 {
-		return errors.New("no tempos recorded")
+		return errors.New("no known tempos")
 	}
-
 	dst := util.APath(config.Destination+"Tempo", config.Relative)
 	err = os.MkdirAll(dst, os.ModePerm)
 	if err != nil && !os.IsNotExist(err) {
 		return
 	}
-
 	for t, ss := range c.Tempos {
 		tempopath := dst + "/" + strconv.Itoa(t) + "/"
 		err = os.MkdirAll(tempopath, os.ModePerm)
@@ -120,21 +160,61 @@ func (c *Collection) SymlinkTempos() (err error) {
 			return
 		}
 		for _, s := range ss {
-			go func(sample *Sample) {
-				finalPath := tempopath + sample.Name
-				log.Trace().Str("caller", sample.Path).Msg(finalPath)
-				err = freshLink(finalPath)
-				if err != nil {
-					return
-				}
-				if _, err = os.Stat(sample.Path); err != nil {
-					return
-				}
-				err = os.Symlink(sample.Path, finalPath)
-				if err != nil && !os.IsNotExist(err) {
-					log.Error().Err(err).Msg("failed to create symlink")
-				}
-			}(s)
+			go link(s, tempopath)
+		}
+	}
+	return nil
+}
+
+func (c *Collection) SymlinkKeys() (err error) {
+	log.Trace().Msg("SymlinkKeys start")
+	defer log.Trace().Err(err).Msg("SymlinkKeys finish")
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if len(c.Keys) < 1 {
+		return errors.New("no known keys")
+	}
+	dst := util.APath(config.Destination+"Key", config.Relative)
+	err = os.MkdirAll(dst, os.ModePerm)
+	if err != nil && !os.IsNotExist(err) {
+		return
+	}
+	for t, ss := range c.Keys {
+		keypath := dst + "/" + t.Root.String(t.AdjSymbol) + "/"
+		err = os.MkdirAll(keypath, os.ModePerm)
+		if err != nil && !os.IsExist(err) {
+			return
+		}
+		for _, s := range ss {
+			go link(s, keypath)
+		}
+	}
+	return nil
+}
+
+func (c *Collection) SymlinkDrums() (err error) {
+	log.Trace().Msg("SymlinkDrums start")
+	defer log.Trace().Err(err).Msg("SymlinkDrums finish")
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if len(c.Drums) < 1 {
+		return errors.New("no known drums")
+	}
+	dst := util.APath(config.Destination+"Drums", config.Relative)
+	err = os.MkdirAll(dst, os.ModePerm)
+	if err != nil && !os.IsNotExist(err) {
+		return
+	}
+	for t, ss := range c.Drums {
+		drumpath := dst + "/" + drumToDirMap[t] + "/"
+		err = os.MkdirAll(drumpath, os.ModePerm)
+		if err != nil && !os.IsExist(err) {
+			return
+		}
+		for _, s := range ss {
+			go link(s, drumpath)
 		}
 	}
 	return nil

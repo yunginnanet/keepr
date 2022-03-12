@@ -4,6 +4,8 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/rs/zerolog"
 	"kr.dev/walk"
@@ -44,34 +46,38 @@ func main() {
 				slog.Debug().Msg("skiping directory entirely")
 				cripwalk.SkipDir()
 			}
-			slog.Trace().Msg("directory")
+			// slog.Trace().Msg("directory")
 		case cripwalk.Path() == os.Args[1]:
 			slog.Debug().Msg("skipping self-parent directory entirely")
 			cripwalk.SkipParent()
 		default:
 			sample, err := collect.Process(cripwalk.Entry(), util.APath(cripwalk.Path(), config.Relative))
 			if err != nil {
-				log.Warn().Err(err).Msgf("failed to process %s", cripwalk.Entry().Name())
+				slog.Warn().Err(err).Msgf("failed to process")
 				continue
 			}
 			if sample == nil {
-				log.Trace().Msgf("skipping unknown file %s", cripwalk.Entry().Name())
+				slog.Trace().Msgf("skipping unknown file")
 				continue
 			}
-			collect.Library.IngestTempo(sample)
 		}
 	}
 
-	if zerolog.GlobalLevel() == zerolog.TraceLevel {
-		collect.Library.TempoStats()
+	for !atomic.CompareAndSwapInt32(&collect.Backlog, 0, -1) {
+		time.Sleep(1 * time.Second)
+		print(".")
 	}
 
 	if config.StatsOnly {
-		return
+		collect.Library.TempoStats()
+		collect.Library.KeyStats()
+		collect.Library.DrumStats()
 	}
 
-	err := collect.Library.SymlinkTempos()
-	if err != nil {
-		log.Fatal().Err(err).Msg("returned from symlinkTempos")
-	}
+	var errs []error
+	errs = append(errs, collect.Library.SymlinkTempos())
+	errs = append(errs, collect.Library.SymlinkKeys())
+	errs = append(errs, collect.Library.SymlinkDrums())
+
+	log.Info().Errs("errs", errs).Msg("fin.")
 }

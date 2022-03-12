@@ -16,9 +16,11 @@ var (
 	// Destination is the base path for our symlink library.
 	Destination = defDestination
 	// Relative will determine if we use relative pathing for symlinks.
-	Relative = false
-
-	StatsOnly = false
+	Relative      = false
+	Simulate      = false
+	StatsOnly     = false
+	NoMIDI        = false
+	SkipWavDecode = false
 )
 
 // GetLogger retrieves a pointer to our zerolog instance.
@@ -55,6 +57,12 @@ func init() {
 			Relative = true
 		case "--stats", "-s":
 			StatsOnly = true
+		case "--no-op", "-n":
+			Simulate = true
+		case "--no-midi", "-m":
+			NoMIDI = true
+		case "--fast", "-f":
+			SkipWavDecode = true
 		default:
 			Target = strings.Trim(arg, "/")
 			println("search target detected: " + Target)
