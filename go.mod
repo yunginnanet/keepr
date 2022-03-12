@@ -10,6 +10,7 @@ require (
 )
 
 require (
+	git.tcp.direct/kayos/common/squish v0.0.0-20220210125455-40e3d2190a52 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-audio/audio v1.0.0 // indirect
 	github.com/go-audio/riff v1.0.0 // indirect

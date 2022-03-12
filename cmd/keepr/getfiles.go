@@ -47,9 +47,6 @@ func main() {
 				cripwalk.SkipDir()
 			}
 			// slog.Trace().Msg("directory")
-		case cripwalk.Path() == os.Args[1]:
-			slog.Debug().Msg("skipping self-parent directory entirely")
-			cripwalk.SkipParent()
 		default:
 			sample, err := collect.Process(cripwalk.Entry(), util.APath(cripwalk.Path(), config.Relative))
 			if err != nil {
@@ -63,11 +60,6 @@ func main() {
 		}
 	}
 
-	for !atomic.CompareAndSwapInt32(&collect.Backlog, 0, -1) {
-		time.Sleep(1 * time.Second)
-		print(".")
-	}
-
 	if config.StatsOnly {
 		collect.Library.TempoStats()
 		collect.Library.KeyStats()
@@ -78,6 +70,11 @@ func main() {
 	errs = append(errs, collect.Library.SymlinkTempos())
 	errs = append(errs, collect.Library.SymlinkKeys())
 	errs = append(errs, collect.Library.SymlinkDrums())
+
+	for !atomic.CompareAndSwapInt32(&collect.Backlog, 0, -1) {
+		time.Sleep(1 * time.Second)
+		print(".")
+	}
 
 	log.Info().Errs("errs", errs).Msg("fin.")
 }

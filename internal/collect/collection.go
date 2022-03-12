@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-audio/wav"
@@ -120,12 +121,14 @@ func (c *Collection) KeyStats() {
 }
 
 func link(sample *Sample, kp string) {
+	atomic.AddInt32(&Backlog, 1)
+	defer atomic.AddInt32(&Backlog, -1)
 	slog := log.With().Str("caller", sample.Path).Logger()
 	finalPath := kp + sample.Name
 	slog.Trace().Msg(finalPath)
 	err := freshLink(finalPath)
-	if err != nil {
-		slog.Warn().Err(err).Msg("old symlink delete failure")
+	if err != nil && !os.IsNotExist(err) {
+		slog.Trace().Msgf(err.Error())
 	}
 	if _, err = os.Stat(sample.Path); err != nil {
 		slog.Warn().Err(err).Msg("can't stat original file")
@@ -134,13 +137,15 @@ func link(sample *Sample, kp string) {
 		log.Printf("would have linked %s -> %s", sample.Path, finalPath)
 		return
 	}
-	err = os.Symlink(sample.Path, finalPath)
-	if err != nil && !os.IsNotExist(err) {
-		slog.Error().Err(err).Msg("failed to create symlink")
+	symerr := os.Symlink(sample.Path, finalPath)
+	if symerr != nil && !os.IsExist(symerr) && !os.IsNotExist(symerr) {
+		slog.Error().Err(symerr).Msg("failed to create symlink")
 	}
 }
 
 func (c *Collection) SymlinkTempos() (err error) {
+	atomic.AddInt32(&Backlog, 1)
+	defer atomic.AddInt32(&Backlog, -1)
 	log.Trace().Msg("SymlinkTempos start")
 	defer log.Trace().Err(err).Msg("SymlinkTempos finish")
 	c.mu.RLock()
@@ -167,6 +172,8 @@ func (c *Collection) SymlinkTempos() (err error) {
 }
 
 func (c *Collection) SymlinkKeys() (err error) {
+	atomic.AddInt32(&Backlog, 1)
+	defer atomic.AddInt32(&Backlog, -1)
 	log.Trace().Msg("SymlinkKeys start")
 	defer log.Trace().Err(err).Msg("SymlinkKeys finish")
 	c.mu.RLock()
@@ -194,6 +201,8 @@ func (c *Collection) SymlinkKeys() (err error) {
 }
 
 func (c *Collection) SymlinkDrums() (err error) {
+	atomic.AddInt32(&Backlog, 1)
+	defer atomic.AddInt32(&Backlog, -1)
 	log.Trace().Msg("SymlinkDrums start")
 	defer log.Trace().Err(err).Msg("SymlinkDrums finish")
 	c.mu.RLock()

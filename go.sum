@@ -1,3 +1,5 @@
+git.tcp.direct/kayos/common/squish v0.0.0-20220210125455-40e3d2190a52 h1:lpyyjVo/je2oSNp+ecb13oHtDDWELmsxm8WA5XZjFGw=
+git.tcp.direct/kayos/common/squish v0.0.0-20220210125455-40e3d2190a52/go.mod h1:QZ5ZpL7EsqjteMmv5C5zNMlttUpYes2RrA1ILI/Ql2w=
 github.com/coreos/go-systemd/v22 v22.3.2/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

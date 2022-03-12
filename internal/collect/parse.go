@@ -84,8 +84,8 @@ var drumDirMap = map[string]DrumType{
 }
 
 var drumToDirMap = map[DrumType]string{
-	Snare: "Snares", Kick: "Kicks", HiHat: "HiHats", HatClosed: "HiHat/Closed",
-	HatOpen: "HiHat/Open", EightOhEight: "808", Tom: "Toms", Percussion: "Other",
+	Snare: "Snares", Kick: "Kicks", HiHat: "HiHats", HatClosed: "HiHats/Closed",
+	HatOpen: "HiHats/Open", EightOhEight: "808", Tom: "Toms", Percussion: "Other",
 }
 
 var (
