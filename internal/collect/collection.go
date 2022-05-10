@@ -121,6 +121,19 @@ func (c *Collection) KeyStats() {
 }
 
 func link(sample *Sample, kp string) {
+	mapMu.RLock()
+	if _, ok := lockMap[sample.Path]; !ok {
+		mapMu.RUnlock()
+		mapMu.Lock()
+		lockMap[sample.Path] = &sync.Mutex{}
+		mapMu.Unlock()
+		mapMu.RLock()
+	}
+	defer mapMu.RUnlock()
+
+	lockMap[sample.Path].Lock()
+	defer lockMap[sample.Path].Unlock()
+
 	atomic.AddInt32(&Backlog, 1)
 	defer atomic.AddInt32(&Backlog, -1)
 	slog := log.With().Str("caller", sample.Path).Logger()
@@ -153,7 +166,7 @@ func (c *Collection) SymlinkTempos() (err error) {
 	if len(c.Tempos) < 1 {
 		return errors.New("no known tempos")
 	}
-	dst := util.APath(config.Destination+"Tempo", config.Relative)
+	dst := util.APath(config.Output+"Tempo", config.Relative)
 	err = os.MkdirAll(dst, os.ModePerm)
 	if err != nil && !os.IsNotExist(err) {
 		return
@@ -182,7 +195,7 @@ func (c *Collection) SymlinkKeys() (err error) {
 	if len(c.Keys) < 1 {
 		return errors.New("no known keys")
 	}
-	dst := util.APath(config.Destination+"Key", config.Relative)
+	dst := util.APath(config.Output+"Key", config.Relative)
 	err = os.MkdirAll(dst, os.ModePerm)
 	if err != nil && !os.IsNotExist(err) {
 		return
@@ -211,7 +224,7 @@ func (c *Collection) SymlinkDrums() (err error) {
 	if len(c.Drums) < 1 {
 		return errors.New("no known drums")
 	}
-	dst := util.APath(config.Destination+"Drums", config.Relative)
+	dst := util.APath(config.Output+"Drums", config.Relative)
 	err = os.MkdirAll(dst, os.ModePerm)
 	if err != nil && !os.IsNotExist(err) {
 		return

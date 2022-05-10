@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync/atomic"
@@ -30,10 +31,14 @@ func init() {
 func main() {
 	log = config.GetLogger()
 	var lastpath = ""
-	cripwalk := walk.New(os.DirFS(basepath), config.Target)
+	target := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(config.Source), "/"), "/")
+	cripwalk := walk.New(os.DirFS(basepath), target)
+	_, output := filepath.Split(strings.TrimSuffix(config.Output, "/"))
+	log.Trace().Msgf("output is %s", output)
 	for cripwalk.Next() {
 		if err := cripwalk.Err(); err != nil {
-			log.Warn().Str("caller", lastpath).Msg(err.Error())
+			log.Fatal().Caller().Str("caller", lastpath).Msg(err.Error())
+			continue
 		}
 		lastpath = cripwalk.Path()
 		slog := log.With().Str("caller", cripwalk.Path()).Logger()
@@ -42,21 +47,28 @@ func main() {
 			slog.Trace().Msg("nil")
 			continue
 		case cripwalk.Entry().IsDir():
-			if strings.Contains(cripwalk.Path(), config.Destination) {
-				slog.Debug().Msg("skiping directory entirely")
+			if strings.Contains(cripwalk.Path(), output) {
+				slog.Info().Msg("skiping directory entirely")
 				cripwalk.SkipDir()
 			}
+			continue
 			// slog.Trace().Msg("directory")
 		default:
+			if strings.Contains(cripwalk.Path(), config.Output) {
+				log.Trace().Msg("skipping file in destination")
+				cripwalk.SkipDir()
+				continue
+			}
 			sample, err := collect.Process(cripwalk.Entry(), util.APath(cripwalk.Path(), config.Relative))
 			if err != nil {
-				slog.Warn().Err(err).Msgf("failed to process")
+				slog.Warn().Caller().Str("caller", cripwalk.Path()).Err(err).Msgf("failed to process")
 				continue
 			}
 			if sample == nil {
 				slog.Trace().Msgf("skipping unknown file")
 				continue
 			}
+			slog.Info().Interface("sample", sample).Msg("processed")
 		}
 	}
 
