@@ -233,6 +233,7 @@ func (c *Collection) SymlinkKeys() (err error) {
 	if len(c.Keys) < 1 {
 		return errors.New("no known keys")
 	}
+
 	dst := util.APath(config.Output+"Key", config.Relative)
 	err = os.MkdirAll(dst, os.ModePerm)
 	if err != nil && !os.IsNotExist(err) {
@@ -244,7 +245,20 @@ func (c *Collection) SymlinkKeys() (err error) {
 		if err != nil && !os.IsExist(err) {
 			return
 		}
+	samploop:
 		for _, s := range ss {
+			for _, st := range s.Type {
+				if st != TypeOneShot {
+					continue
+				}
+				oskeypath := keypath + "OneShots/"
+				err = os.MkdirAll(keypath, os.ModePerm)
+				if err != nil && !os.IsExist(err) {
+					return
+				}
+				go link(s, oskeypath)
+				continue samploop
+			}
 			go link(s, keypath)
 		}
 	}

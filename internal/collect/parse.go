@@ -127,7 +127,19 @@ func (s *Sample) ParseFilename() {
 	var fallback = ""
 	var keyFound = false
 
-	for _, opiece := range guessSeperator(s.Name) {
+	roots := []string{"C", "D", "E", "F", "G", "A", "B"}
+
+	opieces := guessSeperator(s.Name)
+	for _, opiece := range opieces {
+		opiece = strings.TrimSuffix(opiece, ".wav")
+		for _, r := range roots {
+			if strings.TrimSpace(opiece) == r {
+				fallback = opiece
+			}
+		}
+	}
+
+	for _, opiece := range opieces {
 		opiece = strings.TrimSuffix(opiece, ".wav")
 		log.Trace().Msgf("parse %s, piece: %s", s.Name, opiece)
 		piece := strings.ToLower(opiece)
@@ -145,15 +157,8 @@ func (s *Sample) ParseFilename() {
 		}
 
 		spl := strings.Split(opiece, "")
-		if len(spl) < 1 || len(spl) > 6 {
+		if len(spl) > 6 || len(spl) == 0 {
 			continue
-		}
-
-		roots := []string{"C", "D", "E", "F", "G", "A", "B"}
-		for _, r := range roots {
-			if opiece == r {
-				fallback = opiece
-			}
 		}
 
 		// if our fragment starts with a known root note, then try to parse the fragment, else dip-set.
@@ -183,6 +188,7 @@ func (s *Sample) ParseFilename() {
 	if !keyFound && fallback != "" {
 		log.Warn().Msgf("using fallback key for %s: %s", s.Name, fallback)
 		s.Key = key.Of(fallback)
+		go Library.IngestKey(s)
 	}
 }
 
@@ -208,7 +214,7 @@ func readWAV(s *Sample) error {
 		return fmt.Errorf("failed to get duration for %s: %s", s.Name, err.Error())
 	}
 
-	if s.Duration < 2*time.Second {
+	if s.Duration != 0 && s.Duration < 2*time.Second {
 		s.Type = append(s.Type, TypeOneShot)
 		var newTypes []SampleType
 		for _, t := range s.Type {
@@ -251,10 +257,10 @@ func Process(entry fs.DirEntry, dir string) (s *Sample, err error) {
 		}
 	case "wav":
 		if !config.SkipWavDecode {
-			err = readWAV(s)
-		}
-		if err != nil {
-			log.Warn().Str("caller", s.Name).Msgf("failed to parse wav data")
+			wavErr := readWAV(s)
+			if wavErr != nil {
+				log.Debug().Err(wavErr).Caller().Str("caller", s.Name).Msgf("failed to parse wav data")
+			}
 		}
 		s.ParseFilename()
 	default:
