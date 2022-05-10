@@ -121,6 +121,19 @@ func (c *Collection) KeyStats() {
 }
 
 func link(sample *Sample, kp string) {
+	mapMu.RLock()
+	if _, ok := lockMap[sample.Path]; !ok {
+		mapMu.RUnlock()
+		mapMu.Lock()
+		lockMap[sample.Path] = &sync.Mutex{}
+		mapMu.Unlock()
+		mapMu.RLock()
+	}
+	defer mapMu.RUnlock()
+
+	lockMap[sample.Path].Lock()
+	defer lockMap[sample.Path].Unlock()
+
 	atomic.AddInt32(&Backlog, 1)
 	defer atomic.AddInt32(&Backlog, -1)
 	slog := log.With().Str("caller", sample.Path).Logger()
