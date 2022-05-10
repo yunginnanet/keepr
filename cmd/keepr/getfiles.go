@@ -73,15 +73,19 @@ func main() {
 	}
 
 	if config.StatsOnly {
+		log.Info().Msg("Printing stats")
 		collect.Library.TempoStats()
 		collect.Library.KeyStats()
 		collect.Library.DrumStats()
+		collect.Library.TypeStats()
+		return
 	}
 
 	var errs []error
 	errs = append(errs, collect.Library.SymlinkTempos())
 	errs = append(errs, collect.Library.SymlinkKeys())
 	errs = append(errs, collect.Library.SymlinkDrums())
+	errs = append(errs, collect.Library.SymlinkMelodicLoops())
 
 	for !atomic.CompareAndSwapInt32(&collect.Backlog, 0, -1) {
 		time.Sleep(1 * time.Second)

@@ -2,6 +2,7 @@ package collect
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strconv"
 	"sync"
@@ -87,13 +88,18 @@ var Library = &Collection{
 	mu:     &sync.RWMutex{},
 }
 
+func (c *Collection) TypeStats() {
+	println(fmt.Sprintf("Drum loops: %d", len(c.DrumLoops)))
+	println(fmt.Sprintf("Melodic loops: %d", len(c.MelodicLoops)))
+}
+
 // TempoStats outputs the amount of samples with each known tempo.
 func (c *Collection) TempoStats() {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	for t, ss := range c.Tempos {
 		if len(ss) > 1 {
-			log.Printf("%dBPM: %d", t, len(ss))
+			println(fmt.Sprintf("%dBPM: %d", t, len(ss)))
 		}
 	}
 }
@@ -104,7 +110,7 @@ func (c *Collection) DrumStats() {
 	defer c.mu.RUnlock()
 	for t, ss := range c.Drums {
 		if len(ss) > 1 {
-			log.Printf("%s: %d", drumToDirMap[t], len(ss))
+			println(fmt.Sprintf("%s: %d", drumToDirMap[t], len(ss)))
 		}
 	}
 }
@@ -115,12 +121,15 @@ func (c *Collection) KeyStats() {
 	defer c.mu.RUnlock()
 	for t, ss := range c.Keys {
 		if len(ss) > 1 {
-			log.Printf("%s: %d", t.Root.String(t.AdjSymbol), len(ss))
+			println(fmt.Sprintf("%s: %d", t.Root.String(t.AdjSymbol), len(ss)))
 		}
 	}
 }
 
 func link(sample *Sample, kp string) {
+	atomic.AddInt32(&Backlog, 1)
+	defer atomic.AddInt32(&Backlog, -1)
+
 	mapMu.RLock()
 	if _, ok := lockMap[sample.Path]; !ok {
 		mapMu.RUnlock()
@@ -134,14 +143,12 @@ func link(sample *Sample, kp string) {
 	lockMap[sample.Path].Lock()
 	defer lockMap[sample.Path].Unlock()
 
-	atomic.AddInt32(&Backlog, 1)
-	defer atomic.AddInt32(&Backlog, -1)
 	slog := log.With().Str("caller", sample.Path).Logger()
 	finalPath := kp + sample.Name
 	slog.Trace().Msg(finalPath)
 	err := freshLink(finalPath)
 	if err != nil && !os.IsNotExist(err) {
-		slog.Trace().Msgf(err.Error())
+		slog.Warn().Msgf(err.Error())
 	}
 	if _, err = os.Stat(sample.Path); err != nil {
 		slog.Warn().Err(err).Msg("can't stat original file")
@@ -154,6 +161,29 @@ func link(sample *Sample, kp string) {
 	if symerr != nil && !os.IsExist(symerr) && !os.IsNotExist(symerr) {
 		slog.Error().Err(symerr).Msg("failed to create symlink")
 	}
+}
+
+func (c *Collection) SymlinkMelodicLoops() (err error) {
+	atomic.AddInt32(&Backlog, 1)
+	defer atomic.AddInt32(&Backlog, -1)
+	log.Trace().Msg("SymlinkMelodicLoops start")
+	defer log.Trace().Err(err).Msg("SymlinkMelodicLoops finish")
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if len(c.MelodicLoops) < 1 {
+		return errors.New("no known tempos")
+	}
+	dest := config.Output + "Melodic_Loops"
+	dst := util.APath(dest, config.Relative)
+	err = os.MkdirAll(dst, os.ModePerm)
+	mlpath := dst + "/"
+	if err != nil && !os.IsNotExist(err) {
+		return
+	}
+	for _, s := range c.MelodicLoops {
+		go link(s, mlpath)
+	}
+	return nil
 }
 
 func (c *Collection) SymlinkTempos() (err error) {

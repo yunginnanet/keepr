@@ -112,10 +112,10 @@ func (s *Sample) ParseFilename() {
 	case s.getParentDir() == "melodic_loops", strings.Contains(s.getParentDir(), "melod"):
 		if !s.IsType(Loop) {
 			s.Type = append(s.Type, Loop)
-			Library.IngestMelodicLoop(s)
+			go Library.IngestMelodicLoop(s)
 		}
 	case isdrum:
-		Library.IngestDrum(s, drumtype)
+		go Library.IngestDrum(s, drumtype)
 	}
 
 	for _, opiece := range guessSeperator(s.Name) {
@@ -134,7 +134,7 @@ func (s *Sample) ParseFilename() {
 		}
 
 		if s.Tempo != 0 {
-			Library.IngestTempo(s)
+			go Library.IngestTempo(s)
 		}
 
 		spl := strings.Split(opiece, "")
@@ -162,7 +162,7 @@ func (s *Sample) ParseFilename() {
 		}
 
 		s.Key = key.Of(opiece)
-		Library.IngestKey(s)
+		go Library.IngestKey(s)
 	}
 }
 
@@ -215,7 +215,7 @@ func Process(entry fs.DirEntry, dir string) (s *Sample, err error) {
 	case "midi", "mid":
 		if !config.NoMIDI {
 			s.Type = append(s.Type, MIDI)
-			Library.IngestMIDI(s)
+			go Library.IngestMIDI(s)
 		}
 	case "wav":
 		if !config.SkipWavDecode {
