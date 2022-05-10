@@ -37,7 +37,7 @@ func (c *Collection) IngestMelodicLoop(sample *Sample) {
 	c.MelodicLoops = append(c.MelodicLoops, sample)
 }
 
-// IngestMIDI appends to a list of [pointers to] MIDI/SMF files.
+// IngestMIDI appends to a list of [pointers to] TypeMIDI/SMF files.
 func (c *Collection) IngestMIDI(sample *Sample) {
 	atomic.AddInt32(&Backlog, 1)
 	defer atomic.AddInt32(&Backlog, -1)

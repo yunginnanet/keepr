@@ -32,27 +32,27 @@ type SampleType uint8
 
 //goland:noinspection GoUnusedConst
 const (
-	Unknown SampleType = iota
-	Ambient
-	Melodic
-	DrumLoop
-	OneShot
-	Drum
-	Loop
-	MIDI
+	TypeUnknown SampleType = iota
+	TypeAmbient
+	TypeMelodic
+	TypeDrumLoop
+	TypeOneShot
+	TypeDrum
+	TypeLoop
+	TypeMIDI
 )
 
 type DrumType uint8
 
 const (
-	Kick DrumType = iota
-	Snare
-	HiHat
-	HatClosed
-	HatOpen
-	Tom
-	Percussion
-	EightOhEight
+	DrumKick DrumType = iota
+	DrumSnare
+	DrumHiHat
+	DrumHatClosed
+	DrumHatOpen
+	DrumTom
+	DrumPercussion
+	Drum808
 )
 
 // Sample represents an audio sample and contains relevant information regarding said sample.
@@ -181,7 +181,15 @@ func (c *Collection) SymlinkMelodicLoops() (err error) {
 		return
 	}
 	for _, s := range c.MelodicLoops {
-		go link(s, mlpath)
+		var oneshot = false
+		for _, t := range s.Type {
+			if t == TypeOneShot {
+				break
+			}
+		}
+		if !oneshot {
+			go link(s, mlpath)
+		}
 	}
 	return nil
 }

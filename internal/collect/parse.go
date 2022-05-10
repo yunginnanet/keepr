@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/go-audio/wav"
 	"gopkg.in/music-theory.v0/key"
@@ -66,6 +67,7 @@ func guessSeperator(name string) (spl []string) {
 			sep = s
 		}
 	}
+	log.Trace().Msgf("found seperator for %s: %s", name, sep)
 	return strings.Split(name, sep)
 }
 
@@ -84,13 +86,13 @@ func (s *Sample) IsType(st SampleType) bool {
 }
 
 var drumDirMap = map[string]DrumType{
-	"snares": Snare, "kicks": Kick, "hats": HiHat, "hihats": HiHat, "closed_hihats": HatClosed,
-	"open_hihats": HatOpen, "808s": EightOhEight, "808": EightOhEight, "toms": Tom,
+	"snares": DrumSnare, "kicks": DrumKick, "hats": DrumHiHat, "hihats": DrumHiHat, "closed_hihats": DrumHatClosed,
+	"open_hihats": DrumHatOpen, "808s": Drum808, "808": Drum808, "toms": DrumTom,
 }
 
 var drumToDirMap = map[DrumType]string{
-	Snare: "Snares", Kick: "Kicks", HiHat: "HiHats", HatClosed: "HiHats/Closed",
-	HatOpen: "HiHats/Open", EightOhEight: "808", Tom: "Toms", Percussion: "Other",
+	DrumSnare: "Snares", DrumKick: "Kicks", DrumHiHat: "HiHats", DrumHatClosed: "HiHats/Closed",
+	DrumHatOpen: "HiHats/Open", Drum808: "808", DrumTom: "Toms", DrumPercussion: "Other",
 }
 
 var (
@@ -98,9 +100,13 @@ var (
 	rgxFlatIn, _     = regexp.Compile("^F|[♭b]")
 	rgxSharpBegin, _ = regexp.Compile("^[♯#]")
 	rgxFlatBegin, _  = regexp.Compile("^[♭b]")
-	rgxSharpishIn, _ = regexp.Compile("(M|maj|major|aug)")
+	rgxSharpishIn, _ = regexp.Compile("(maj|major|aug)")
 	rgxFlattishIn, _ = regexp.Compile("([^a-z]|^)(m|min|minor|dim)")
-	mustMatchOne     = []*regexp.Regexp{rgxFlatIn, rgxFlatBegin, rgxSharpBegin, rgxSharpIn, rgxFlattishIn, rgxSharpishIn}
+
+	mustMatchOne = map[string]*regexp.Regexp{
+		"flat": rgxFlatIn, "flat_begin": rgxFlatBegin,
+		"sharp_begin": rgxSharpBegin, "sharp": rgxSharpIn,
+		"flattish": rgxFlattishIn, "sparpish": rgxSharpishIn}
 )
 
 func (s *Sample) ParseFilename() {
@@ -110,15 +116,20 @@ func (s *Sample) ParseFilename() {
 
 	switch {
 	case s.getParentDir() == "melodic_loops", strings.Contains(s.getParentDir(), "melod"):
-		if !s.IsType(Loop) {
-			s.Type = append(s.Type, Loop)
+		if !s.IsType(TypeLoop) {
+			s.Type = append(s.Type, TypeLoop)
 			go Library.IngestMelodicLoop(s)
 		}
 	case isdrum:
 		go Library.IngestDrum(s, drumtype)
 	}
 
+	var fallback = ""
+	var keyFound = false
+
 	for _, opiece := range guessSeperator(s.Name) {
+		opiece = strings.TrimSuffix(opiece, ".wav")
+		log.Trace().Msgf("parse %s, piece: %s", s.Name, opiece)
 		piece := strings.ToLower(opiece)
 		if num, numerr := strconv.Atoi(piece); numerr == nil {
 			if num > 50 && num != 808 {
@@ -129,27 +140,29 @@ func (s *Sample) ParseFilename() {
 			s.Tempo = guessBPM(piece)
 		}
 
-		if strings.Contains(s.Name, "bpm") {
-			continue
-		}
-
 		if s.Tempo != 0 {
 			go Library.IngestTempo(s)
 		}
 
 		spl := strings.Split(opiece, "")
-		if len(spl) < 1 || len(spl) > 5 {
+		if len(spl) < 1 || len(spl) > 6 {
 			continue
 		}
+
+		roots := []string{"C", "D", "E", "F", "G", "A", "B"}
+		for _, r := range roots {
+			if opiece == r {
+				fallback = opiece
+			}
+		}
+
 		// if our fragment starts with a known root note, then try to parse the fragment, else dip-set.
 		switch spl[0] {
 		case "C", "D", "E", "F", "G", "A", "B":
-			if len(spl) < 2 {
-				break
-			}
 			var found = false
-			for _, rgx := range mustMatchOne {
+			for desc, rgx := range mustMatchOne {
 				if rgx.MatchString(opiece) {
+					log.Trace().Msgf("matched regex for %s", desc)
 					found = true
 					break
 				}
@@ -162,7 +175,14 @@ func (s *Sample) ParseFilename() {
 		}
 
 		s.Key = key.Of(opiece)
-		go Library.IngestKey(s)
+		if s.Key.Root != 0 {
+			keyFound = true
+			go Library.IngestKey(s)
+		}
+	}
+	if !keyFound && fallback != "" {
+		log.Warn().Msgf("using fallback key for %s: %s", s.Name, fallback)
+		s.Key = key.Of(fallback)
 	}
 }
 
@@ -174,22 +194,34 @@ func readWAV(s *Sample) error {
 	defer f.Close()
 
 	decoder := wav.NewDecoder(f)
-	s.Duration, err = decoder.Duration()
-	if err != nil {
-		return fmt.Errorf("failed to get duration for %s: %s", s.Name, err.Error())
-	}
+
 	decoder.ReadMetadata()
 	if decoder.Err() != nil {
 		return decoder.Err()
 	}
-	if meta := decoder.Metadata; meta == nil {
-		return nil
+	if s.Metadata = decoder.Metadata; s.Metadata == nil {
+		return fmt.Errorf("%s had nil metadata despite no error", s.Name)
 	}
 
-	s.Metadata = decoder.Metadata
+	s.Duration, err = decoder.Duration()
+	if err != nil {
+		return fmt.Errorf("failed to get duration for %s: %s", s.Name, err.Error())
+	}
+
+	if s.Duration < 2*time.Second {
+		s.Type = append(s.Type, TypeOneShot)
+		var newTypes []SampleType
+		for _, t := range s.Type {
+			if t != TypeLoop {
+				newTypes = append(newTypes, t)
+			}
+		}
+		s.Type = newTypes
+	}
+
 	log.Trace().Msg(fmt.Sprintf("metadata: %v", s.Metadata))
 
-	decoder.ReadInfo()
+	//
 
 	return nil
 }
@@ -214,7 +246,7 @@ func Process(entry fs.DirEntry, dir string) (s *Sample, err error) {
 	switch ext {
 	case "midi", "mid":
 		if !config.NoMIDI {
-			s.Type = append(s.Type, MIDI)
+			s.Type = append(s.Type, TypeMIDI)
 			go Library.IngestMIDI(s)
 		}
 	case "wav":
@@ -222,7 +254,7 @@ func Process(entry fs.DirEntry, dir string) (s *Sample, err error) {
 			err = readWAV(s)
 		}
 		if err != nil {
-			return nil, err
+			log.Warn().Str("caller", s.Name).Msgf("failed to parse wav data")
 		}
 		s.ParseFilename()
 	default:
