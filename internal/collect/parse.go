@@ -104,13 +104,13 @@ func (s *Sample) ParseFilename() {
 	drumtype, isdrum := drumDirMap[s.getParentDir()]
 
 	switch {
-	case s.getParentDir() == "melodic_loops":
+	case s.getParentDir() == "melodic_loops", strings.Contains(s.getParentDir(), "melod"):
 		if !s.IsType(Loop) {
 			s.Type = append(s.Type, Loop)
-			go Library.IngestMelodicLoop(s)
+			Library.IngestMelodicLoop(s)
 		}
 	case isdrum:
-		go Library.IngestDrum(s, drumtype)
+		Library.IngestDrum(s, drumtype)
 	}
 
 	for _, opiece := range guessSeperator(s.Name) {
@@ -124,8 +124,12 @@ func (s *Sample) ParseFilename() {
 			s.Tempo = guessBPM(piece)
 		}
 
+		if strings.Contains(s.Name, "bpm") {
+			continue
+		}
+
 		if s.Tempo != 0 {
-			go Library.IngestTempo(s)
+			Library.IngestTempo(s)
 		}
 
 		spl := strings.Split(opiece, "")
@@ -153,7 +157,7 @@ func (s *Sample) ParseFilename() {
 		}
 
 		s.Key = key.Of(opiece)
-		go Library.IngestKey(s)
+		Library.IngestKey(s)
 	}
 }
 
@@ -206,7 +210,7 @@ func Process(entry fs.DirEntry, dir string) (s *Sample, err error) {
 	case "midi", "mid":
 		if !config.NoMIDI {
 			s.Type = append(s.Type, MIDI)
-			go Library.IngestMIDI(s)
+			Library.IngestMIDI(s)
 		}
 	case "wav":
 		if !config.SkipWavDecode {
@@ -215,7 +219,7 @@ func Process(entry fs.DirEntry, dir string) (s *Sample, err error) {
 		if err != nil {
 			return nil, err
 		}
-		go s.ParseFilename()
+		s.ParseFilename()
 	default:
 		return nil, nil
 	}

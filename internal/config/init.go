@@ -13,9 +13,9 @@ const defDestination = "001-LINKED_SORTED_DIRECTORIES"
 
 var (
 	log    zerolog.Logger
-	Target = ""
-	// Destination is the base path for our symlink library.
-	Destination = defDestination
+	Source = ""
+	// Output is the base path for our symlink library.
+	Output = defDestination
 	// Relative will determine if we use relative pathing for symlinks.
 	Relative      = false
 	Simulate      = false
@@ -60,9 +60,9 @@ func init() {
 		switch arg {
 		case "_":
 			continue
-		case "--destination", "-d":
+		case "-o", "--output":
 			required(i)
-			Destination = os.Args[i+1]
+			Output = os.Args[i+1]
 			os.Args[i+1] = "_"
 		case "--debug", "-v":
 			zerolog.SetGlobalLevel(zerolog.DebugLevel)
@@ -70,7 +70,7 @@ func init() {
 			zerolog.SetGlobalLevel(zerolog.TraceLevel)
 		case "--relative", "-r":
 			Relative = true
-		case "--stats", "-s":
+		case "--stats":
 			StatsOnly = true
 		case "--no-op", "-n":
 			Simulate = true
@@ -78,33 +78,37 @@ func init() {
 			NoMIDI = true
 		case "--fast", "-f":
 			SkipWavDecode = true
+		case "--source", "-s":
+			required(i)
+			Source = os.Args[i+1]
+			os.Args[i+1] = "_"
 		default:
-			Target = strings.Trim(arg, "/")
+			log.Fatal().Msg("unknown argument: " + arg)
 		}
 	}
 
-	if Target == "" {
+	if Source == "" {
 		log.Fatal().Msg("missing target search directory")
 	}
 
-	f, err := os.Stat(Destination)
+	f, err := os.Stat(Output)
 	switch {
 	case err != nil:
 		if !os.IsNotExist(err) {
-			log.Fatal().Caller().Str("caller", Destination).Err(err).Msg("")
+			log.Fatal().Caller().Str("caller", Output).Err(err).Msg("")
 		}
-		if err := os.MkdirAll(Destination, os.ModePerm); err != nil {
-			log.Fatal().Caller().Str("caller", Destination).Err(err).Msg("could not make directory")
+		if err := os.MkdirAll(Output, os.ModePerm); err != nil {
+			log.Fatal().Caller().Str("caller", Output).Err(err).Msg("could not make directory")
 		}
 	case !f.IsDir():
-		if Destination != "./"+defDestination {
-			log.Fatal().Caller().Str("caller", Destination).Msg("not a directory")
+		if Output != "./"+defDestination {
+			log.Fatal().Caller().Str("caller", Output).Msg("not a directory")
 		}
-		if err := os.MkdirAll(Destination, os.ModePerm); err != nil {
-			log.Fatal().Caller().Str("caller", Destination).Err(err).Msg("could not make directory")
+		if err := os.MkdirAll(Output, os.ModePerm); err != nil {
+			log.Fatal().Caller().Str("caller", Output).Err(err).Msg("could not make directory")
 		}
 	}
-	if !strings.HasSuffix(Destination, "/") {
-		Destination = Destination + "/"
+	if !strings.HasSuffix(Output, "/") {
+		Output = Output + "/"
 	}
 }
