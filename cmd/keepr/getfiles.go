@@ -83,14 +83,7 @@ func main() {
 	errs = append(errs, collect.Library.SymlinkKeys())
 	errs = append(errs, collect.Library.SymlinkDrums())
 
-	var count = 0
-
-	// FIXME: the below is a hacky fix
 	for !atomic.CompareAndSwapInt32(&collect.Backlog, 0, -1) {
-		if count == 10 && atomic.LoadInt32(&collect.Backlog) == 1 {
-			break
-		}
-		count++
 		time.Sleep(1 * time.Second)
 		print(".")
 	}

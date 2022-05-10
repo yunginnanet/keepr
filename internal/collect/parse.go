@@ -21,18 +21,6 @@ var lockMap = make(map[string]*sync.Mutex)
 var mapMu = &sync.RWMutex{}
 
 func freshLink(path string) error {
-	mapMu.RLock()
-	if _, ok := lockMap[path]; !ok {
-		mapMu.RUnlock()
-		mapMu.Lock()
-		lockMap[path] = &sync.Mutex{}
-		mapMu.Unlock()
-		mapMu.RLock()
-	}
-	defer mapMu.RUnlock()
-
-	lockMap[path].Lock()
-	defer lockMap[path].Unlock()
 	if _, err := os.Lstat(path); err == nil {
 		if err := os.Remove(path); err != nil {
 			return fmt.Errorf("failed to unlink: %+v", err)
