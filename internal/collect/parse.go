@@ -259,7 +259,7 @@ func Process(entry fs.DirEntry, dir string) (s *Sample, err error) {
 		if !config.SkipWavDecode {
 			wavErr := readWAV(s)
 			if wavErr != nil {
-				log.Debug().Err(wavErr).Caller().Str("caller", s.Name).Msgf("failed to parse wav data")
+				log.Debug().Caller().Str("caller", s.Name).Msgf("failed to parse wav data: %w", wavErr)
 			}
 		}
 		s.ParseFilename()
