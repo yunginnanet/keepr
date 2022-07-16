@@ -21,15 +21,6 @@ var lockMap = make(map[string]*sync.Mutex)
 
 var mapMu = &sync.RWMutex{}
 
-func freshLink(path string) error {
-	if _, err := os.Lstat(path); err == nil {
-		if err := os.Remove(path); err != nil {
-			return fmt.Errorf("failed to unlink: %+v", err)
-		}
-	}
-	return nil
-}
-
 func guessBPM(piece string) (bpm int) {
 	// TODO: don't trust this lol?
 	if num, numerr := strconv.Atoi(piece); numerr != nil {
@@ -259,7 +250,7 @@ func Process(entry fs.DirEntry, dir string) (s *Sample, err error) {
 		if !config.SkipWavDecode {
 			wavErr := readWAV(s)
 			if wavErr != nil {
-				log.Debug().Caller().Str("caller", s.Name).Msgf("failed to parse wav data: %w", wavErr)
+				log.Debug().Caller().Str("caller", s.Name).Msgf("failed to parse wav data: %s", wavErr.Error())
 			}
 		}
 		s.ParseFilename()

@@ -1,10 +1,11 @@
 package util
 
 import (
+	"fmt"
+	"github.com/rs/zerolog/log"
+	"os"
 	"path/filepath"
 	"runtime"
-
-	"github.com/rs/zerolog/log"
 )
 
 // APath is a wrapper for filepath.Abs for convenience and flexibility.
@@ -23,4 +24,13 @@ func APath(path string, relative bool) string {
 		return path
 	}
 	return abs
+}
+
+func FreshLink(path string) error {
+	if _, err := os.Lstat(path); err == nil {
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("failed to unlink: %+v", err)
+		}
+	}
+	return nil
 }

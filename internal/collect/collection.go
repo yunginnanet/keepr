@@ -146,7 +146,7 @@ func link(sample *Sample, kp string) {
 	slog := log.With().Str("caller", sample.Path).Logger()
 	finalPath := kp + sample.Name
 	slog.Trace().Msg(finalPath)
-	err := freshLink(finalPath)
+	err := util.FreshLink(finalPath)
 	if err != nil && !os.IsNotExist(err) {
 		slog.Warn().Msgf(err.Error())
 	}
