@@ -1,6 +1,8 @@
 package config
 
 import (
+	"bytes"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -40,6 +42,29 @@ func required(i int) {
 	}
 	println("invalid syntax, missing argument")
 	os.Exit(1)
+}
+
+var helpStr = `
+           Flags:
+
+--output, -o     (required) output directory
+--source, -s     (required) source directory
+
+--debug, -v      enable debug output
+--trace, -vv     enable trace output
+--relative, -r   enable relative pathing
+--stats          only output stats, no symlinking
+--no-op, -n      simulate actions only, change nothing (read only)
+--no-midi, -m    do not parse MIDI files
+--fast, -f       do not parse WAV files
+
+--help, -h       it me
+
+`
+
+func help() {
+	rdr := bytes.NewReader([]byte(helpStr))
+	io.Copy(os.Stdout, rdr)
 }
 
 func init() {
@@ -82,13 +107,19 @@ func init() {
 			required(i)
 			Source = os.Args[i+1]
 			os.Args[i+1] = "_"
+		case "--help", "-h":
+			help()
+			os.Exit(0)
 		default:
 			log.Fatal().Msg("unknown argument: " + arg)
+			help()
 		}
 	}
 
 	if Source == "" {
-		log.Fatal().Msg("missing target search directory")
+		log.Error().Msg("missing target search directory")
+		help()
+		os.Exit(1)
 	}
 
 	f, err := os.Stat(Output)
@@ -102,7 +133,9 @@ func init() {
 		}
 	case !f.IsDir():
 		if Output != "./"+defDestination {
-			log.Fatal().Caller().Str("caller", Output).Msg("not a directory")
+			log.Error().Caller().Str("caller", Output).Msg("not a directory")
+			help()
+			os.Exit(1)
 		}
 		if err := os.MkdirAll(Output, os.ModePerm); err != nil {
 			log.Fatal().Caller().Str("caller", Output).Err(err).Msg("could not make directory")
