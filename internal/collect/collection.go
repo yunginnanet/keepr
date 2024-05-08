@@ -158,7 +158,7 @@ func link(sample *Sample, kp string) {
 	defer lockMap[sample.Path].Unlock()
 
 	slog := log.With().Str("caller", sample.Path).Logger()
-	finalPath := kp + sample.Name
+	finalPath := filepath.Join(kp, sample.Name)
 	slog.Trace().Msg(finalPath)
 	err := util.FreshLink(finalPath)
 	if err != nil && !os.IsNotExist(err) {

@@ -346,8 +346,7 @@ func Process(entry fs.DirEntry, dir string) (*Sample, error) {
 	case "midi", "mid":
 		if !config.NoMIDI {
 			s.Types[TypeMIDI] = struct{}{}
-			midi.
-				Library.IngestMIDI(s)
+			Library.IngestMIDI(s)
 		}
 
 	case "wav":
