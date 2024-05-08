@@ -1,6 +1,6 @@
 module git.tcp.direct/kayos/keepr
 
-go 1.22
+go 1.20
 
 require (
 	git.tcp.direct/kayos/common v0.9.7
