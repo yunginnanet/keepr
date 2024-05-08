@@ -3,8 +3,6 @@ package collect
 import (
 	"strings"
 	"sync/atomic"
-
-	"github.com/davecgh/go-spew/spew"
 )
 
 var Backlog int32
@@ -38,9 +36,6 @@ func (c *Collection) IngestTempo(sample *Sample) {
 // IngestMelodicLoop appends to a list of [pointers to] melodic loop samples.
 func (c *Collection) IngestMelodicLoop(sample *Sample) {
 	if !sample.IsType(TypeMelodic) || !sample.IsType(TypeLoop) {
-		if sample.IsType(TypeMelodic) || sample.IsType(TypeLoop) {
-			log.Warn().Str("caller", sample.Name).Msg(spew.Sdump(sample))
-		}
 		return
 	}
 	atomic.AddInt32(&Backlog, 1)
