@@ -29,6 +29,7 @@ func init() {
 }
 
 func main() {
+	config.KeeprInit()
 	log = config.GetLogger()
 	var lastpath = ""
 	target := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(config.Source), "/"), "/")
@@ -86,6 +87,12 @@ func main() {
 	errs = append(errs, collect.Library.SymlinkKeys())
 	errs = append(errs, collect.Library.SymlinkDrums())
 	errs = append(errs, collect.Library.SymlinkMelodicLoops())
+	errs = append(errs, collect.Library.SymlinkMIDIs())
+	errs = append(errs, collect.Library.SymlinkArtists())
+	errs = append(errs, collect.Library.SymlinkGenres())
+	errs = append(errs, collect.Library.SymlinkSources())
+	errs = append(errs, collect.Library.SymlinkCreationDates())
+	errs = append(errs, collect.Library.SymlinkSoftwares())
 
 	for !atomic.CompareAndSwapInt32(&collect.Backlog, 0, -1) {
 		time.Sleep(1 * time.Second)

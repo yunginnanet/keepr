@@ -24,14 +24,15 @@ func TestSample_getParentDir(t *testing.T) {
 		fields fields
 		want   string
 	}
-	var tests = []test{test{
-		name: "testparentdir",
-		fields: fields{
-			Name: "OS_BB_808_E_RARRI.wav",
-			Path: "/home/fuckholejones/808_Bass/OS_BB_808_E_RARRI.wav",
+	var tests = []test{
+		{
+			name: "testparentdir",
+			fields: fields{
+				Name: "OS_BB_808_E_RARRI.wav",
+				Path: "/home/fuckholejones/808_Bass/OS_BB_808_E_RARRI.wav",
+			},
+			want: "808_bass",
 		},
-		want: "808_bass",
-	},
 	}
 
 	for _, tt := range tests {

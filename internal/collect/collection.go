@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -63,7 +64,7 @@ type Sample struct {
 	Duration time.Duration
 	Key      key.Key
 	Tempo    int
-	Type     []SampleType
+	Types    map[SampleType]struct{}
 	Metadata *wav.Metadata
 }
 
@@ -71,21 +72,34 @@ type Sample struct {
 
 // Collection contains taxonomy information and relationship mapping for our Sample collectiion.
 type Collection struct {
-	Tempos       map[int][]*Sample
-	Keys         map[key.Key][]*Sample
-	Drums        map[DrumType][]*Sample
-	DrumLoops    []*Sample
-	MelodicLoops []*Sample
-	Midis        []*Sample
-	mu           *sync.RWMutex
+	Tempos        map[int][]*Sample
+	Keys          map[key.Key][]*Sample
+	Drums         map[DrumType][]*Sample
+	Artists       map[string][]*Sample
+	Sources       map[string][]*Sample
+	Genres        map[string][]*Sample
+	CreationDates map[string][]*Sample
+	Arists        map[string][]*Sample
+	Software      map[string][]*Sample
+	DrumLoops     []*Sample
+	MelodicLoops  []*Sample
+	MIDIs         []*Sample
+	mu            *sync.RWMutex
 }
 
 // Library is a global default instance of a Collection.
 var Library = &Collection{
-	Tempos: make(map[int][]*Sample),
-	Keys:   make(map[key.Key][]*Sample),
-	Drums:  make(map[DrumType][]*Sample),
-	mu:     &sync.RWMutex{},
+	Tempos:        make(map[int][]*Sample),
+	Keys:          make(map[key.Key][]*Sample),
+	Drums:         make(map[DrumType][]*Sample),
+	Artists:       make(map[string][]*Sample),
+	Sources:       make(map[string][]*Sample),
+	Genres:        make(map[string][]*Sample),
+	CreationDates: make(map[string][]*Sample),
+	Arists:        make(map[string][]*Sample),
+	Software:      make(map[string][]*Sample),
+
+	mu: &sync.RWMutex{},
 }
 
 func (c *Collection) TypeStats() {
@@ -171,25 +185,25 @@ func (c *Collection) SymlinkMelodicLoops() (err error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if len(c.MelodicLoops) < 1 {
-		return errors.New("no known tempos")
+		return errors.New("no known melodic loops")
 	}
-	dest := config.Output + "Melodic_Loops"
-	dst := util.APath(dest, config.Relative)
+	dst := util.APath(filepath.Join(config.Output, "Melodic Loops"), config.Relative)
 	err = os.MkdirAll(dst, os.ModePerm)
 	mlpath := dst + "/"
 	if err != nil && !os.IsNotExist(err) {
 		return
 	}
 	for _, s := range c.MelodicLoops {
-		var oneshot = false
-		for _, t := range s.Type {
-			if t == TypeOneShot {
-				break
-			}
+		if _, ok := s.Types[TypeOneShot]; ok {
+			continue
 		}
-		if !oneshot {
-			go link(s, mlpath)
+		if _, ok := s.Types[TypeDrum]; ok {
+			continue
 		}
+		if _, ok := s.Types[TypeDrumLoop]; ok {
+			continue
+		}
+		go link(s, mlpath)
 	}
 	return nil
 }
@@ -204,7 +218,7 @@ func (c *Collection) SymlinkTempos() (err error) {
 	if len(c.Tempos) < 1 {
 		return errors.New("no known tempos")
 	}
-	dst := util.APath(config.Output+"Tempo", config.Relative)
+	dst := util.APath(filepath.Join(config.Output, "Tempo"), config.Relative)
 	err = os.MkdirAll(dst, os.ModePerm)
 	if err != nil && !os.IsNotExist(err) {
 		return
@@ -222,6 +236,14 @@ func (c *Collection) SymlinkTempos() (err error) {
 	return nil
 }
 
+func modeStr(t key.Key) string {
+	mode := "_" + t.Mode.String()
+	if mode == "_Nil" {
+		mode = ""
+	}
+	return mode
+}
+
 func (c *Collection) SymlinkKeys() (err error) {
 	atomic.AddInt32(&Backlog, 1)
 	defer atomic.AddInt32(&Backlog, -1)
@@ -234,32 +256,30 @@ func (c *Collection) SymlinkKeys() (err error) {
 		return errors.New("no known keys")
 	}
 
-	dst := util.APath(config.Output+"Key", config.Relative)
+	dst := util.APath(filepath.Join(config.Output, "Key"), config.Relative)
 	err = os.MkdirAll(dst, os.ModePerm)
 	if err != nil && !os.IsNotExist(err) {
 		return
 	}
 	for t, ss := range c.Keys {
-		keypath := dst + "/" + t.Root.String(t.AdjSymbol) + "/"
+
+		keypath := dst + "/" + t.Root.String(t.AdjSymbol) + modeStr(t) + "/"
 		err = os.MkdirAll(keypath, os.ModePerm)
 		if err != nil && !os.IsExist(err) {
 			return
 		}
 	samploop:
 		for _, s := range ss {
-			for _, st := range s.Type {
-				if st != TypeOneShot {
-					continue
-				}
-				oskeypath := keypath + "OneShots/"
-				err = os.MkdirAll(keypath, os.ModePerm)
-				if err != nil && !os.IsExist(err) {
-					return
-				}
-				go link(s, oskeypath)
+			if _, ok := s.Types[TypeOneShot]; !ok {
+				go link(s, keypath)
 				continue samploop
 			}
-			go link(s, keypath)
+			oskeypath := keypath + "OneShots/"
+			err = os.MkdirAll(keypath, os.ModePerm)
+			if err != nil && !os.IsExist(err) {
+				return
+			}
+			go link(s, oskeypath)
 		}
 	}
 	return nil
@@ -276,7 +296,7 @@ func (c *Collection) SymlinkDrums() (err error) {
 	if len(c.Drums) < 1 {
 		return errors.New("no known drums")
 	}
-	dst := util.APath(config.Output+"Drums", config.Relative)
+	dst := util.APath(filepath.Join(config.Output, "Drums"), config.Relative)
 	err = os.MkdirAll(dst, os.ModePerm)
 	if err != nil && !os.IsNotExist(err) {
 		return
@@ -289,6 +309,167 @@ func (c *Collection) SymlinkDrums() (err error) {
 		}
 		for _, s := range ss {
 			go link(s, drumpath)
+		}
+	}
+	return nil
+}
+
+func (c *Collection) SymlinkMIDIs() (err error) {
+	atomic.AddInt32(&Backlog, 1)
+	defer atomic.AddInt32(&Backlog, -1)
+	log.Trace().Msg("SymlinkMIDIs start")
+	defer log.Trace().Err(err).Msg("SymlinkMIDIs finish")
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if len(c.MIDIs) < 1 {
+		return errors.New("no known MIDI")
+	}
+	dst := util.APath(filepath.Join(config.Output, "MIDI"), config.Relative)
+	err = os.MkdirAll(dst, os.ModePerm)
+	if err != nil && !os.IsNotExist(err) {
+		return
+	}
+	for _, s := range c.MIDIs {
+		go link(s, dst)
+	}
+	return nil
+}
+
+func (c *Collection) SymlinkArtists() (err error) {
+	atomic.AddInt32(&Backlog, 1)
+	defer atomic.AddInt32(&Backlog, -1)
+	log.Trace().Msg("SymlinkArtists start")
+	defer log.Trace().Err(err).Msg("SymlinkArtists finish")
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if len(c.Artists) < 1 {
+		return errors.New("no known artists")
+	}
+	dst := util.APath(filepath.Join(config.Output, "Artists"), config.Relative)
+	err = os.MkdirAll(dst, os.ModePerm)
+	if err != nil && !os.IsNotExist(err) {
+		return
+	}
+	for t, ss := range c.Artists {
+		artistpath := dst + "/" + t + "/"
+		err = os.MkdirAll(artistpath, os.ModePerm)
+		if err != nil && !os.IsExist(err) {
+			return
+		}
+		for _, s := range ss {
+			go link(s, artistpath)
+		}
+	}
+	return nil
+}
+
+func (c *Collection) SymlinkGenres() (err error) {
+	atomic.AddInt32(&Backlog, 1)
+	defer atomic.AddInt32(&Backlog, -1)
+	log.Trace().Msg("SymlinkGenres start")
+	defer log.Trace().Err(err).Msg("SymlinkGenres finish")
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if len(c.Genres) < 1 {
+		return errors.New("no known genres")
+	}
+	dst := util.APath(filepath.Join(config.Output, "Genres"), config.Relative)
+	err = os.MkdirAll(dst, os.ModePerm)
+	if err != nil && !os.IsNotExist(err) {
+		return
+	}
+	for t, ss := range c.Genres {
+		genrepath := dst + "/" + t + "/"
+		err = os.MkdirAll(genrepath, os.ModePerm)
+		if err != nil && !os.IsExist(err) {
+			return
+		}
+		for _, s := range ss {
+			go link(s, genrepath)
+		}
+	}
+	return nil
+}
+
+func (c *Collection) SymlinkSources() (err error) {
+	atomic.AddInt32(&Backlog, 1)
+	defer atomic.AddInt32(&Backlog, -1)
+	log.Trace().Msg("SymlinkSources start")
+	defer log.Trace().Err(err).Msg("SymlinkSources finish")
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if len(c.Sources) < 1 {
+		return errors.New("no known sources")
+	}
+	dst := util.APath(filepath.Join(config.Output, "Sources"), config.Relative)
+	err = os.MkdirAll(dst, os.ModePerm)
+	if err != nil && !os.IsNotExist(err) {
+		return
+	}
+	for t, ss := range c.Sources {
+		sourcepath := dst + "/" + t + "/"
+		err = os.MkdirAll(sourcepath, os.ModePerm)
+		if err != nil && !os.IsExist(err) {
+			return
+		}
+		for _, s := range ss {
+			go link(s, sourcepath)
+		}
+	}
+	return nil
+}
+
+func (c *Collection) SymlinkCreationDates() (err error) {
+	atomic.AddInt32(&Backlog, 1)
+	defer atomic.AddInt32(&Backlog, -1)
+	log.Trace().Msg("SymlinkCreationDates start")
+	defer log.Trace().Err(err).Msg("SymlinkCreationDates finish")
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if len(c.CreationDates) < 1 {
+		return errors.New("no known creation dates")
+	}
+	dst := util.APath(filepath.Join(config.Output, "Creation Dates"), config.Relative)
+	err = os.MkdirAll(dst, os.ModePerm)
+	if err != nil && !os.IsNotExist(err) {
+		return
+	}
+	for t, ss := range c.CreationDates {
+		creationpath := dst + "/" + t + "/"
+		err = os.MkdirAll(creationpath, os.ModePerm)
+		if err != nil && !os.IsExist(err) {
+			return
+		}
+		for _, s := range ss {
+			go link(s, creationpath)
+		}
+	}
+	return nil
+}
+
+func (c *Collection) SymlinkSoftwares() (err error) {
+	atomic.AddInt32(&Backlog, 1)
+	defer atomic.AddInt32(&Backlog, -1)
+	log.Trace().Msg("SymlinkSoftwares start")
+	defer log.Trace().Err(err).Msg("SymlinkSoftwares finish")
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if len(c.Software) < 1 {
+		return errors.New("no known software")
+	}
+	dst := util.APath(filepath.Join(config.Output, "Software"), config.Relative)
+	err = os.MkdirAll(dst, os.ModePerm)
+	if err != nil && !os.IsNotExist(err) {
+		return
+	}
+	for t, ss := range c.Software {
+		softwarepath := dst + "/" + t + "/"
+		err = os.MkdirAll(softwarepath, os.ModePerm)
+		if err != nil && !os.IsExist(err) {
+			return
+		}
+		for _, s := range ss {
+			go link(s, softwarepath)
 		}
 	}
 	return nil

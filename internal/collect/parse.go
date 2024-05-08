@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -64,20 +65,17 @@ func guessSeperator(name string) (spl []string) {
 
 func (s *Sample) getParentDir() string {
 	spl := strings.Split(s.Path, "/")
-	return strings.ToLower(spl[len(spl)-2])
+	return strings.ReplaceAll(strings.TrimSpace(strings.ToLower(spl[len(spl)-2])), " ", "_")
 }
 
 func (s *Sample) IsType(st SampleType) bool {
-	for _, t := range s.Type {
-		if t == st {
-			return true
-		}
-	}
-	return false
+	_, ok := s.Types[st]
+	return ok
 }
 
 var drumDirMap = map[string]DrumType{
-	"snares": DrumSnare, "kicks": DrumKick, "hats": DrumHiHat, "hihats": DrumHiHat, "closed_hihats": DrumHatClosed,
+	"snares": DrumSnare, "snare": DrumSnare, "kick": DrumKick, "kicks": DrumKick, "hats": DrumHiHat, "hat": DrumHiHat,
+	"hihat": DrumHiHat, "hi-hat": DrumHiHat, "hihats": DrumHiHat, "closed_hihats": DrumHatClosed,
 	"open_hihats": DrumHatOpen, "808s": Drum808, "808": Drum808, "toms": DrumTom,
 }
 
@@ -100,19 +98,74 @@ var (
 		"flattish": rgxFlattishIn, "sparpish": rgxSharpishIn}
 )
 
+var keySubstrings = map[string]struct{}{
+	"C": {}, "D": {}, "E": {}, "F": {}, "G": {}, "A": {}, "B": {},
+}
+
+func keyMatch(s string, opiece string) bool {
+	var found bool
+	if _, ok := keySubstrings[s]; !ok {
+		return false
+	}
+	for desc, rgx := range mustMatchOne {
+		if !rgx.MatchString(opiece) {
+			continue
+		}
+		log.Trace().Msgf("matched regex for %s", desc)
+		found = true
+		break
+
+	}
+	return found
+}
+
+var melodicKeywords = []string{
+	"chord", "synth", "pad", "arp", "piano",
+	"organ", "guitar", "bass", "lead", "key",
+	"string", "brass", "woodwind", "flute", "trumpet",
+	"sax", "horn", "violin", "cello", "harp",
+	"vocal", "marimba",
+}
+
 func (s *Sample) ParseFilename() {
 	atomic.AddInt32(&Backlog, 1)
 	defer atomic.AddInt32(&Backlog, -1)
-	drumtype, isdrum := drumDirMap[s.getParentDir()]
-
-	switch {
-	case s.getParentDir() == "melodic_loops", strings.Contains(s.getParentDir(), "melod"):
-		if !s.IsType(TypeLoop) {
-			s.Type = append(s.Type, TypeLoop)
-			go Library.IngestMelodicLoop(s)
+	slog := log.With().Str("caller", s.Path).Logger()
+	if s.Name != "" {
+		slog = slog.With().Str("caller", s.Name).Logger()
+	}
+	pd := s.getParentDir()
+	path := strings.ReplaceAll(strings.TrimSpace(strings.ToLower(s.Path)), " ", "_")
+	fname := strings.ToLower(filepath.Base(path))
+	candidates := make([]string, 0, 1)
+	if strings.Contains(pd, "_") {
+		candidates = strings.Split(pd, "_")
+	} else {
+		candidates = []string{pd}
+	}
+	for _, c := range candidates {
+		if drumtype, isdrum := drumDirMap[c]; isdrum {
+			slog.Trace().Msgf("found drum type: %s", c)
+			s.Types[TypeDrum] = struct{}{}
+			go Library.IngestDrum(s, drumtype)
+			break
 		}
-	case isdrum:
-		go Library.IngestDrum(s, drumtype)
+	}
+
+	if strings.Contains(pd, "melod") {
+		s.Types[TypeMelodic] = struct{}{}
+	}
+
+	if strings.Contains(pd, "loop") || strings.Contains(fname, "bpm") {
+		s.Types[TypeLoop] = struct{}{}
+	}
+
+	for _, k := range melodicKeywords {
+		if strings.Contains(fname, k) {
+			s.Types[TypeMelodic] = struct{}{}
+			log.Trace().Msgf("found melodic keyword: %s, in %s", k, fname)
+			break
+		}
 	}
 
 	var fallback = ""
@@ -144,7 +197,7 @@ func (s *Sample) ParseFilename() {
 		}
 
 		if s.Tempo != 0 {
-			go Library.IngestTempo(s)
+			// go Library.IngestTempo(s)
 		}
 
 		spl := strings.Split(opiece, "")
@@ -153,36 +206,65 @@ func (s *Sample) ParseFilename() {
 		}
 
 		// if our fragment starts with a known root note, then try to parse the fragment, else dip-set.
-		switch spl[0] {
-		case "C", "D", "E", "F", "G", "A", "B":
-			var found = false
-			for desc, rgx := range mustMatchOne {
-				if rgx.MatchString(opiece) {
-					log.Trace().Msgf("matched regex for %s", desc)
-					found = true
-					break
-				}
-			}
-			if !found {
-				continue
-			}
-		default:
+		if !keyMatch(spl[0], opiece) {
 			continue
 		}
 
-		s.Key = key.Of(opiece)
 		if s.Key.Root != 0 {
 			keyFound = true
-			go Library.IngestKey(s)
+		}
+
+		if s.Key.Root == 0 {
+			s.Key = key.Of(opiece)
+			if s.Key.Root != 0 {
+				keyFound = true
+				// go Library.IngestKey(s)
+			}
 		}
 	}
 	if !keyFound && fallback != "" {
 		log.Warn().Msgf("using fallback key for %s: %s", s.Name, fallback)
 		s.Key = key.Of(fallback)
-		go Library.IngestKey(s)
+		// go Library.IngestKey(s)
 	}
 }
 
+/*
+var wavBufs = sync.Pool{
+	New: func() interface{} {
+		return &audio.IntBuffer{
+			Data: make([]int, 0, 4096),
+		}
+	},
+}
+*/
+/*
+	func GetWavBuffer(pcmLen int64) *audio.IntBuffer {
+		ib := wavBufs.Get().(*audio.IntBuffer)
+		if ib == nil || ib.Data == nil {
+			ib = wavBufs.New().(*audio.IntBuffer)
+		}
+		if ib == nil {
+			panic("failed to get wav buffer")
+		}
+		if ib.Data == nil {
+			ib.Data = make([]int, 0, 4096)
+		}
+		if cap(ib.Data) < int(pcmLen) {
+			ib.Data = make([]int, pcmLen)
+		}
+		ib.Data = ib.Data[:pcmLen]
+		return ib
+	}
+
+	func PutWavBuffer(b *audio.IntBuffer) {
+		if b == nil {
+			return
+		}
+
+		wavBufs.Put(b)
+	}
+*/
 func readWAV(s *Sample) error {
 	f, err := os.Open(s.Path)
 	if err != nil {
@@ -196,36 +278,52 @@ func readWAV(s *Sample) error {
 	if decoder.Err() != nil {
 		return decoder.Err()
 	}
-	if s.Metadata = decoder.Metadata; s.Metadata == nil {
-		return fmt.Errorf("%s had nil metadata despite no error", s.Name)
+
+	if s.Metadata == nil {
+		s.Metadata = decoder.Metadata
 	}
 
 	s.Duration, err = decoder.Duration()
 	if err != nil {
-		return fmt.Errorf("failed to get duration for %s: %s", s.Name, err.Error())
+		log.Warn().Caller().Str("caller", s.Name).Err(err).Msg("failed to get duration")
 	}
 
-	if s.Duration != 0 && s.Duration < 2*time.Second {
-		s.Type = append(s.Type, TypeOneShot)
-		var newTypes []SampleType
-		for _, t := range s.Type {
-			if t != TypeLoop {
-				newTypes = append(newTypes, t)
-			}
-		}
-		s.Type = newTypes
+	log.Debug().Caller().Str("caller", s.Name).Msgf("duration: %s", s.Duration.String())
+
+	isLoop := false
+
+	if s.Duration != 0 && s.Duration > 1500*time.Millisecond {
+		s.Types[TypeLoop] = struct{}{}
+		delete(s.Types, TypeOneShot)
+		isLoop = true
+	}
+
+	if s.Duration != 0 && s.Duration < 1*time.Second && !isLoop {
+		s.Types[TypeOneShot] = struct{}{}
+		delete(s.Types, TypeLoop)
+	}
+
+	if s.Metadata == nil {
+		log.Debug().Caller().Str("caller", s.Name).Msg("no metadata found")
+		return nil
+	}
+
+	if s.Metadata != nil && s.Metadata.SamplerInfo != nil && len(s.Metadata.SamplerInfo.Loops) > 0 {
+		isLoop = true
+		s.Types[TypeLoop] = struct{}{}
 	}
 
 	log.Trace().Msg(fmt.Sprintf("metadata: %v", s.Metadata))
 
-	//
+	decoder = nil // avoid memory leak
 
 	return nil
 }
 
-func Process(entry fs.DirEntry, dir string) (s *Sample, err error) {
+func Process(entry fs.DirEntry, dir string) (*Sample, error) {
 	log.Trace().Str("caller", entry.Name()).Msg("Processing")
 	var finfo os.FileInfo
+	var err error
 	finfo, err = entry.Info()
 	if err != nil {
 		return nil, fmt.Errorf("failed to Process %s: %s", entry.Name(), err.Error())
@@ -234,29 +332,40 @@ func Process(entry fs.DirEntry, dir string) (s *Sample, err error) {
 	spl := strings.Split(entry.Name(), ".")
 	ext := spl[len(spl)-1]
 
-	s = &Sample{
+	s := &Sample{
 		Name:    entry.Name(),
 		Path:    dir,
 		ModTime: finfo.ModTime(),
+		Types:   make(map[SampleType]struct{}),
 	}
+
+	s.ParseFilename()
+	defer Library.IngestSample(s)
 
 	switch ext {
 	case "midi", "mid":
 		if !config.NoMIDI {
-			s.Type = append(s.Type, TypeMIDI)
-			go Library.IngestMIDI(s)
+			s.Types[TypeMIDI] = struct{}{}
+			midi.
+				Library.IngestMIDI(s)
 		}
+
 	case "wav":
-		if !config.SkipWavDecode {
-			wavErr := readWAV(s)
-			if wavErr != nil {
-				log.Debug().Caller().Str("caller", s.Name).Msgf("failed to parse wav data: %s", wavErr.Error())
-			}
+		if config.SkipWavDecode {
+			break
 		}
-		s.ParseFilename()
+		wavErr := readWAV(s)
+		if wavErr != nil {
+			log.Debug().Caller().Str("caller", s.Name).Msgf("failed to parse wav data: %s", wavErr.Error())
+			return nil, nil
+		}
+		if s.Metadata == nil {
+			break
+		}
+
 	default:
 		return nil, nil
 	}
 
-	return
+	return s, err
 }
