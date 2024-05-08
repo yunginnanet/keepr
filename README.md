@@ -6,7 +6,7 @@
 
 ## problem
 
- * too many fuckin audio samples
+ * too many audio samples
    * 250 gigs scattered about in different subdirectories
    * moving them would immediately cause chaos in past project files
 
@@ -19,6 +19,8 @@
      * **tempo**
      * **percussion type**
      * whatever we think of next
+
+keepr is **fast**. _really_ fast. on my system the bottleneck becomes I/O. When reading and writing to a single NVMe drive keepr averages around 700MBp/s disk read and spikes up to nearly 2GBp/s disk read.
 
 ## will you ever finish it
 
@@ -33,14 +35,13 @@ do I ever finish anything? idk maybe. it works right now better than the old ver
  - [x] be stupid dumb fast
  - [ ] verify various theories with wave/midi data
  - [ ] sort MIDI files
- - [ ] more taxonomy
+ - [x] more taxonomy
  - [ ] unit tests
- - [ ] in-app documentation
+ - [x] in-app documentation
  - [ ] more to-do items
 
 ## recognition
 
- * fuckhole jones
  * [kr/walk](https://github.com/kr/walk)
  * [go-audio/wav](https://github.com/go-audio/wav)
  * [go-music-theory/music-theory](https://github.com/go-music-theory/music-theory)
