@@ -1,12 +1,13 @@
 module git.tcp.direct/kayos/keepr
 
 go 1.20
+toolchain go1.24.1
 
 require (
 	git.tcp.direct/kayos/common v1.0.0
 	github.com/go-audio/wav v1.1.0
 	github.com/go-music-theory/music-theory v0.0.4
-	github.com/rs/zerolog v1.33.0
+	github.com/rs/zerolog v1.34.0
 	gopkg.in/music-theory.v0 v0.0.4
 	kr.dev/walk v0.1.0
 )
